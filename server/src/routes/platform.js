@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { one, many, sql, tx, tsql } from '../db/pool.js';
 import { asyncHandler, badRequest, notFound, listResponse, parsePaging, slugify, todayStr } from '../utils/api.js';
+import { validatePassword } from '../utils/security.js';
 import { authenticate } from '../middleware/auth.js';
 import { ensureHotelAccounts } from '../services/accounting.js';
 import { ensureHotelModules } from '../services/modules.js';
@@ -127,7 +128,8 @@ r.post(
       await ensureHotelAccounts(client, hotel.id);
       await ensureHotelModules(hotel.id, client);
       if (b.admin) {
-        const hash = await bcrypt.hash(b.admin.password || 'admin123', 10);
+        validatePassword(b.admin.password);
+        const hash = await bcrypt.hash(b.admin.password, 10);
         const u = (await tsql(
           client,
           `INSERT INTO users (hotel_id, role, name, email, password_hash, designation)

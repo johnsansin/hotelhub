@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { one, tsql } from '../db/pool.js';
 
 /**
@@ -18,6 +19,5 @@ export async function docNo(client, hotelId, kind, prefix, pad = 4) {
 }
 
 export async function bookingCode(hotelId) {
-  const n = await nextDocNo(null, hotelId, 'booking', 5);
-  return `BK${n}`;
+  return `BK${randomBytes(16).toString('hex').toUpperCase()}`;
 }

@@ -2,7 +2,10 @@ import jwt from 'jsonwebtoken';
 import { one } from '../db/pool.js';
 import { unauthorized, forbidden, ApiError } from '../utils/api.js';
 
-const SECRET = process.env.JWT_SECRET || 'dev-secret';
+const SECRET = process.env.JWT_SECRET;
+if (!SECRET || SECRET.length < 32 || /^(dev-secret|change-me)/i.test(SECRET)) {
+  throw new Error('JWT_SECRET must be a unique random secret of at least 32 characters');
+}
 const EXPIRES = process.env.JWT_EXPIRES_IN || '7d';
 
 export const COOKIE_NAME = 'hms_token';
@@ -15,7 +18,7 @@ export function setAuthCookie(res, token) {
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production' && false,
+    secure: process.env.NODE_ENV === 'production',
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
   });
@@ -38,7 +41,7 @@ export async function authenticate(req, _res, next) {
     if (!token) throw unauthorized('Authentication required');
     let decoded;
     try {
-      decoded = jwt.verify(token, SECRET);
+      decoded = jwt.verify(token, SECRET, { algorithms: ['HS256'] });
     } catch {
       throw unauthorized('Session expired, please sign in again');
     }
@@ -52,6 +55,7 @@ export async function authenticate(req, _res, next) {
     );
     if (!user) throw unauthorized('Account no longer exists');
     if (!user.is_active) throw forbidden('Your account has been deactivated');
+    if (user.hotel_status === 'suspended' && user.role !== 'superadmin') throw forbidden('This hotel account is suspended');
     req.user = user;
     req.isSuper = user.role === 'superadmin';
     next();
@@ -75,7 +79,7 @@ export function hotelScope(req, _res, next) {
     req.hotelId = hid;
     req.scopeAll = !q && !req.headers['x-hotel-id'];
   } else {
-    if (!req.user.hotel_id) return forbidden('This account is not linked to a hotel');
+    if (!req.user.hotel_id) return next(forbidden('This account is not linked to a hotel'));
     req.hotelId = req.user.hotel_id;
   }
   next();

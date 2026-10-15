@@ -1,5 +1,7 @@
 'use client';
 
+import { useParams } from 'next/navigation';
+
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -444,7 +446,8 @@ function HotelDetail({ slug }) {
   );
 }
 
-export default function HotelPage({ params }) {
+export default function HotelPage() {
+  const params = useParams();
   const slug = params?.slug;
   return (
     <Suspense fallback={<PageLoader label="Loading property…" />}>

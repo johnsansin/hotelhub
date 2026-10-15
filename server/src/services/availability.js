@@ -69,7 +69,7 @@ export async function nightlyAvailability(hotelId, from, to, roomTypeId = null) 
     byType[t.room_type_id].total = t.total;
   }
   for (const rt of roomTypes) {
-    if (!byType[rt.id].total) byType[rt.id].total = Number(rt.total_rooms || 0);
+    if (!totals.some((t) => t.room_type_id === rt.id)) byType[rt.id].total = Number(rt.total_rooms || 0);
   }
   for (const d of dates) {
     for (const key of Object.keys(byType)) {
@@ -117,7 +117,7 @@ export async function findFreeRooms(hotelId, roomTypeId, from, to, excludeBookin
     params.push(roomTypeId);
     typeFilter = ' AND r.room_type_id = $4';
   }
-  const exclude = excludeBookingId ? ' AND b.id <> $5' : '';
+  const exclude = excludeBookingId ? ` AND b.id <> $${params.length + 1}` : '';
   if (excludeBookingId) params.push(excludeBookingId);
 
   const rows = await many(

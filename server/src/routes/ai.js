@@ -447,7 +447,7 @@ r.post(
     let conversationId = req.body?.conversationId || null;
 
     if (conversationId) {
-      const exists = await one(`SELECT id FROM ai_conversations WHERE id=$1 AND hotel_id=$2`, [conversationId, req.hotelId]);
+      const exists = await one(`SELECT id FROM ai_conversations WHERE id=$1 AND hotel_id=$2 AND user_id=$3`, [conversationId, req.hotelId, req.user.id]);
       if (!exists) conversationId = null;
     }
     if (!conversationId) {
@@ -544,7 +544,7 @@ r.get(
 r.get(
   '/conversations/:id',
   asyncHandler(async (req, res) => {
-    const conv = await one(`SELECT * FROM ai_conversations WHERE id=$1 AND hotel_id=$2`, [req.params.id, req.hotelId]);
+    const conv = await one(`SELECT * FROM ai_conversations WHERE id=$1 AND hotel_id=$2 AND user_id=$3`, [req.params.id, req.hotelId, req.user.id]);
     if (!conv) throw notFound('Conversation not found');
     const messages = await many(
       `SELECT id, role, content, meta, created_at FROM ai_messages
@@ -558,7 +558,7 @@ r.get(
 r.delete(
   '/conversations/:id',
   asyncHandler(async (req, res) => {
-    const r2 = await sql(`DELETE FROM ai_conversations WHERE id=$1 AND hotel_id=$2`, [req.params.id, req.hotelId]);
+    const r2 = await sql(`DELETE FROM ai_conversations WHERE id=$1 AND hotel_id=$2 AND user_id=$3`, [req.params.id, req.hotelId, req.user.id]);
     if (!r2.rowCount) throw notFound('Conversation not found');
     res.json({ deleted: true });
   })

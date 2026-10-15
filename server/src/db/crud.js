@@ -115,10 +115,8 @@ export async function crud(config) {
         const params = [req.params.id];
         let scope = '';
         if (hotelScoped) {
-          if (!req.isSuper) {
-            params.push(req.hotelId);
-            scope = ` AND ${table}.hotel_id = $2`;
-          }
+          params.push(req.hotelId);
+          scope = ` AND ${table}.hotel_id = $2`;
         }
         const row = await one(
           `SELECT ${select} FROM ${table} ${joins} WHERE ${table}.id = $1${scope}`,
@@ -174,7 +172,7 @@ export async function crud(config) {
         );
         const params = [...vals, req.params.id];
         let scope = '';
-        if (hotelScoped && !req.isSuper) {
+        if (hotelScoped) {
           params.push(req.hotelId);
           scope = ` AND hotel_id = $${params.length}`;
         }
@@ -195,7 +193,7 @@ export async function crud(config) {
       asyncHandler(async (req, res) => {
         const params = [req.params.id];
         let scope = '';
-        if (hotelScoped && !req.isSuper) {
+        if (hotelScoped) {
           params.push(req.hotelId);
           scope = ` AND hotel_id = $${params.length}`;
         }

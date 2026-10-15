@@ -17,7 +17,7 @@ function publicHotel(h) {
   const {
     settings, created_by, created_at, onboard_step, ...rest
   } = h;
-  return { ...rest, settings: settings || {} };
+  return rest;
 }
 
 // ---------- platform landing data ----------
@@ -290,8 +290,8 @@ r.post(
         await tsql(
           client,
           `INSERT INTO notifications (hotel_id, user_id, title, message, type, link)
-           VALUES ($1,$2,'New website booking','${guestName} booked ${quote.room_type.name} for ${from} → ${to}','booking','/dashboard/bookings')`,
-          [h.id, a.id]
+           VALUES ($1,$2,'New website booking',$3,'booking','/dashboard/bookings')`,
+          [h.id, a.id, `${guestName} booked ${quote.room_type.name} for ${from} → ${to}`]
         );
       }
 
@@ -360,6 +360,8 @@ r.get(
 r.get(
   '/bookings/:code',
   asyncHandler(async (req, res) => {
+    // Legacy sequential codes are not safe bearer credentials.
+    if (!/^BK[0-9A-F]{32}$/i.test(req.params.code)) throw notFound('Booking not found; contact the hotel for legacy reservations');
     const b = await one(
       `SELECT b.*, h.name AS hotel_name, h.slug AS hotel_slug, rt.name AS room_type_name, r.number AS room_number
          FROM bookings b

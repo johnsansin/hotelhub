@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { one, many, sql, tx, tsql } from '../db/pool.js';
 import { asyncHandler, badRequest, notFound, listResponse, parsePaging, addDays, daysBetween } from '../utils/api.js';
 import { quoteStay, findFreeRooms, roomTypeAvailable, nightlyAvailability } from '../services/availability.js';
-import { docNo } from '../services/numbering.js';
+import { docNo, bookingCode } from '../services/numbering.js';
 import { postJournal } from '../services/accounting.js';
 
 const r = Router();
@@ -200,7 +200,7 @@ r.post(
 
     const booking = await tx(async (client) => {
       const guestId = await resolveGuest(client, req.hotelId, d);
-      const code = await docNo(client, req.hotelId, 'booking', 'BK', 5);
+      const code = await bookingCode(req.hotelId);
       const status = ['pending', 'confirmed', 'checked_in'].includes(d.status) ? d.status : 'confirmed';
 
       const bk = await tsql(

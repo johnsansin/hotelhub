@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import { one, many, sql, tx, tsql } from '../db/pool.js';
 import { asyncHandler, badRequest, notFound, parsePaging, listResponse, monthRange } from '../utils/api.js';
 import { crud } from '../db/crud.js';
+import { canAccess } from '../middleware/auth.js';
+import { validateUserRole, validatePassword } from '../utils/security.js';
 import { postJournal } from '../services/accounting.js';
 
 const r = Router();
@@ -37,7 +39,8 @@ r.get(
         ORDER BY u.name LIMIT $${p.length + 1} OFFSET $${p.length + 2}`,
       [...p, limit, offset]
     );
-    res.json(listResponse(rows, total, { page, limit }));
+    const visible = canAccess(req.user.role, 'staff') ? rows : rows.map(({ id, user_id, name, department, designation, status }) => ({ id, user_id, name, department, designation, status }));
+    res.json(listResponse(visible, total, { page, limit }));
   })
 );
 
@@ -50,15 +53,24 @@ r.post(
     const name = b.name || b.user?.name;
     const email = b.email || b.user?.email;
     if (!name) throw badRequest('Name is required');
+    validateUserRole(b.role || 'staff');
+    if (!b.user_id && email && b.create_login !== false) {
+      if (!['admin', 'superadmin'].includes(req.user.role)) throw badRequest('Only an admin may create login accounts');
+      validatePassword(b.password);
+    }
 
     const staff = await tx(async (client) => {
       let userId = b.user_id || null;
+      if (userId) {
+        const linked = await tsql(client, 'SELECT id FROM users WHERE id=$1 AND hotel_id=$2', [userId, req.hotelId]);
+        if (!linked.rows.length) throw badRequest('Invalid staff account');
+      }
       if (email) {
         const dupe = await tsql(client, `SELECT id FROM users WHERE lower(email)=lower($1)`, [email]);
         if (dupe.rows.length && !b.user_id) throw badRequest('A user with this email already exists');
       }
       if (!userId && email && b.create_login !== false) {
-        const hash = await bcrypt.hash(b.password || 'staff123', 10);
+        const hash = await bcrypt.hash(b.password, 10);
         const u = await tsql(
           client,
           `INSERT INTO users (hotel_id, role, name, email, phone, password_hash, designation, is_active)
@@ -90,9 +102,10 @@ r.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const b = { ...req.body };
+    if (b.user && !['admin', 'superadmin'].includes(req.user.role)) throw badRequest('Only an admin may edit login accounts');
     delete b.id; delete b.hotel_id; delete b.name; delete b.email; delete b.role;
     const allowed = ['department', 'designation', 'shift_id', 'join_date', 'salary', 'gender', 'dob',
-      'blood_group', 'address', 'emergency_name', 'emergency_phone', 'id_proof', 'bank_account', 'status', 'user_id'];
+      'blood_group', 'address', 'emergency_name', 'emergency_phone', 'id_proof', 'bank_account', 'status'];
     const sets = [];
     const p = [req.params.id, req.hotelId];
     for (const k of allowed) {
@@ -112,12 +125,12 @@ r.put(
     if (b.user && typeof b.user === 'object' && row.user_id) {
       const u = b.user;
       const usets = [];
-      const up = [row.user_id];
+      const up = [row.user_id, req.hotelId];
       for (const k of ['name', 'phone', 'avatar_url', 'designation', 'is_active']) {
         if (u[k] !== undefined) { up.push(u[k]); usets.push(`"${k}"=$${up.length}`); }
       }
       if (usets.length) {
-        await sql(`UPDATE users SET ${usets.join(', ')} WHERE id=$1`, up);
+        await sql(`UPDATE users SET ${usets.join(', ')} WHERE id=$1 AND hotel_id=$2`, up);
       }
     }
     res.json(row);

@@ -1,3 +1,5 @@
+import { tenantReferences } from '../middleware/references.js';
+import { moduleAccess } from '../middleware/access.js';
 import { Router } from 'express';
 import { authenticate, hotelScope } from '../middleware/auth.js';
 import authRoutes from './auth.js';
@@ -33,6 +35,8 @@ r.use('/superadmin', platformRoutes);
 const t = Router();
 t.use(authenticate);
 t.use(hotelScope);
+t.use(moduleAccess);
+t.use(tenantReferences);
 
 t.use('/dashboard', dashboardRoutes);
 t.use('/bookings', bookingsRoutes);

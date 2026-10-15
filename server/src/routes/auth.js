@@ -6,6 +6,8 @@ import { signToken, setAuthCookie, clearAuthCookie, authenticate, COOKIE_NAME } 
 import { ensureHotelAccounts } from '../services/accounting.js';
 import { ensureHotelModules, enabledModules } from '../services/modules.js';
 
+import { validatePassword } from '../utils/security.js';
+
 const r = Router();
 
 function publicUser(u) {
@@ -65,7 +67,7 @@ r.post(
     const password = String(u.password || '');
     if (!hotelName) throw badRequest('Hotel name is required');
     if (!email) throw badRequest('Email is required');
-    if (password.length < 6) throw badRequest('Password must be at least 6 characters');
+    validatePassword(password);
 
     const exists = await one('SELECT id FROM users WHERE lower(email)=$1', [email]);
     if (exists) throw badRequest('An account with this email already exists');
@@ -157,6 +159,7 @@ r.get(
 r.get(
   '/demo-accounts',
   asyncHandler(async (_req, res) => {
+    if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEMO_ACCOUNTS !== 'true') return res.json({ items: [] });
     const rows = await many(
       `SELECT u.email, u.role, u.name, h.name AS hotel
          FROM users u LEFT JOIN hotels h ON h.id=u.hotel_id
@@ -174,9 +177,9 @@ r.put(
   authenticate,
   asyncHandler(async (req, res) => {
     const { oldPassword, newPassword } = req.body || {};
-    if (!newPassword || newPassword.length < 6) throw badRequest('New password must be at least 6 characters');
+    validatePassword(newPassword);
     const user = await one('SELECT * FROM users WHERE id=$1', [req.user.id]);
-    if (oldPassword && !(await bcrypt.compare(oldPassword, user.password_hash))) {
+    if (typeof oldPassword !== 'string' || !oldPassword || !(await bcrypt.compare(oldPassword, user.password_hash))) {
       throw badRequest('Current password is incorrect');
     }
     const hash = await bcrypt.hash(newPassword, 10);

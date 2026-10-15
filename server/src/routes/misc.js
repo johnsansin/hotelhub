@@ -3,9 +3,12 @@ import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'url';
 import { one, many, sql } from '../db/pool.js';
 import { asyncHandler, badRequest, notFound, listResponse, parsePaging } from '../utils/api.js';
+import { permit } from '../middleware/auth.js';
+import { validateUserRole, validatePassword } from '../utils/security.js';
 import { crud } from '../db/crud.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -16,19 +19,23 @@ const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`);
+    cb(null, `${randomUUID()}${ext}`);
   },
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: 8 * 1024 * 1024, files: 12, fields: 20, parts: 32 },
   fileFilter: (_req, file, cb) => {
-    const ok = /\.(jpg|jpeg|png|webp|gif|svg|pdf|csv)$/.test(path.extname(file.originalname).toLowerCase());
-    cb(ok ? null : new Error('Only images, PDF and CSV files are allowed'), ok);
+    const ok = /\.(jpg|jpeg|png|webp|gif|pdf|csv)$/.test(path.extname(file.originalname).toLowerCase());
+    cb(ok ? null : badRequest('Only raster images, PDF and CSV files are allowed'), ok);
   },
 });
 
 const r = Router();
+r.use('/users', (req, res, next) => {
+  if (req.method === 'GET') return next();
+  return permit('admin')(req, res, next);
+});
 
 // ---------------- USERS (hotel staff accounts) ----------------
 r.get(
@@ -48,7 +55,7 @@ r.post(
   asyncHandler(async (req, res) => {
     const b = req.body || {};
     if (!b.name || !b.email) throw badRequest('name and email are required');
-    if (!b.password || b.password.length < 6) throw badRequest('Password must be at least 6 characters');
+    validatePassword(b.password);
     const allowedRoles = ['admin', 'manager', 'receptionist', 'housekeeper', 'accountant', 'storekeeper', 'restaurant', 'staff'];
     if (b.role && !allowedRoles.includes(b.role)) throw badRequest('Invalid role');
     const dupe = await one(`SELECT id FROM users WHERE lower(email)=lower($1)`, [b.email]);
@@ -67,7 +74,9 @@ r.put(
   '/users/:id',
   asyncHandler(async (req, res) => {
     const b = { ...req.body };
-    delete b.id; delete b.hotel_id; delete b.email; delete b.password;
+    delete b.id; delete b.hotel_id; delete b.email;
+    if (b.role !== undefined) validateUserRole(b.role);
+    if (b.password !== undefined) validatePassword(b.password);
     const allowed = ['name', 'phone', 'role', 'designation', 'avatar_url', 'is_active'];
     const sets = [];
     const p = [req.params.id, req.hotelId];
@@ -106,11 +115,11 @@ r.get(
   asyncHandler(async (req, res) => {
     const { limit } = parsePaging(req, { defaultLimit: 30 });
     const rows = await many(
-      `SELECT * FROM notifications WHERE hotel_id=$1 ORDER BY created_at DESC LIMIT $2`,
-      [req.hotelId, limit]
+      `SELECT * FROM notifications WHERE hotel_id=$1 AND (user_id=$3 OR user_id IS NULL) ORDER BY created_at DESC LIMIT $2`,
+      [req.hotelId, limit, req.user.id]
     );
     const unread = (await one(
-      `SELECT count(*)::int AS c FROM notifications WHERE hotel_id=$1 AND NOT is_read`, [req.hotelId]
+      `SELECT count(*)::int AS c FROM notifications WHERE hotel_id=$1 AND (user_id=$2 OR user_id IS NULL) AND NOT is_read`, [req.hotelId, req.user.id]
     )).c;
     res.json({ items: rows, unread });
   })
@@ -120,10 +129,10 @@ r.post(
   '/notifications/read',
   asyncHandler(async (req, res) => {
     if (req.body?.all) {
-      await sql(`UPDATE notifications SET is_read=true WHERE hotel_id=$1`, [req.hotelId]);
+      await sql(`UPDATE notifications SET is_read=true WHERE hotel_id=$1 AND (user_id=$2 OR user_id IS NULL)`, [req.hotelId, req.user.id]);
     } else if (Array.isArray(req.body?.ids) && req.body.ids.length) {
-      await sql(`UPDATE notifications SET is_read=true WHERE hotel_id=$1 AND id = ANY($2::uuid[])`,
-        [req.hotelId, req.body.ids]);
+      await sql(`UPDATE notifications SET is_read=true WHERE hotel_id=$1 AND id = ANY($2::uuid[]) AND (user_id=$3 OR user_id IS NULL)`,
+        [req.hotelId, req.body.ids, req.user.id]);
     } else {
       await sql(`UPDATE notifications SET is_read=true WHERE hotel_id=$1 AND user_id=$2`,
         [req.hotelId, req.user.id]);

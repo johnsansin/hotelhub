@@ -16,6 +16,7 @@ async function request(path, { method = 'GET', body, headers, cache = 'no-store'
     cache,
     credentials: 'include',
     headers: {
+      'X-Requested-With': 'HotelHub',
       ...(body && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...headers,
     },

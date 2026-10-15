@@ -1,5 +1,7 @@
 'use client';
 
+import { useParams } from 'next/navigation';
+
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -613,7 +615,8 @@ function Wizard({ slug }) {
   );
 }
 
-export default function BookPage({ params }) {
+export default function BookPage() {
+  const params = useParams();
   return (
     <Suspense fallback={<PageLoader label="Preparing your booking…" />}>
       <Wizard slug={params?.slug} />

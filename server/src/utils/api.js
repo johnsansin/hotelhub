@@ -41,6 +41,7 @@ export function setClause(obj, startIndex = 1) {
   const vals = [];
   let i = startIndex;
   for (const k of keys) {
+    if (!/^[a-z_][a-z0-9_]*$/.test(k)) throw badRequest('Invalid field name');
     cols.push(`"${k}"=$${i}`);
     vals.push(obj[k]);
     i++;
@@ -67,9 +68,12 @@ export function todayStr(d = new Date()) {
 }
 
 export function daysBetween(a, b) {
-  const d1 = new Date(a + 'T00:00:00');
-  const d2 = new Date(b + 'T00:00:00');
-  return Math.max(1, Math.round((d2 - d1) / 86400000));
+  const valid = (s) => typeof s === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s)
+    && Number.isFinite(Date.parse(s)) && new Date(s).toISOString().slice(0, 10) === s;
+  if (!valid(a) || !valid(b)) throw badRequest('Valid dates are required');
+  const days = (Date.parse(b) - Date.parse(a)) / 86400000;
+  if (days < 1 || days > 366) throw badRequest('Date range must be between 1 and 366 nights');
+  return days;
 }
 
 export function addDays(dateStr, n) {
